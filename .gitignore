@@ -1,0 +1,5 @@
+*.ipynb_checkpoints
+*.ipynb
+*.pkl
+*.vec
+*.npz
