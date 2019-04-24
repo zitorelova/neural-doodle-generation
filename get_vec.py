@@ -5,7 +5,8 @@ import subprocess
 from sklearn.metrics.pairwise import cosine_similarity
 from shutil import move
 
-bucket = "https://console.cloud.google.com/storage/browser/quickdraw_dataset/sketchrnn/"
+with open('data/files.pkl', 'rb') as f:
+    files = pickle.load(f)
 
 def load_matrices():
     outs = []
@@ -41,9 +42,7 @@ def get_closest(inputs, stochastic=False):
 
 input_str = input("Enter your text: ")
 chosen_class = get_closest(str(input_str)) 
-chosen_class = chosen_class.replace(' ', '%20')
-file_download = bucket + chosen_class + '.npz'
+f = [i for i in files if chosen_class in i]
 print("Downloading closest class...")
-subprocess.run(["wget", file_download])
-f = [i for i in os.listdir() if i.endswith('.npz')][0]
-move(f, 'data')
+subprocess.run(["gsutil", "cp", f[0], 'data/'])
+
