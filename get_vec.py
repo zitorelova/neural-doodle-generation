@@ -5,9 +5,6 @@ import subprocess
 from sklearn.metrics.pairwise import cosine_similarity
 from shutil import move
 
-with open('data/files.pkl', 'rb') as f:
-    files = pickle.load(f)
-
 def load_matrices():
     outs = []
     for filename in ['embed_ix', 'embed_matrix', 'categories']:
@@ -16,8 +13,6 @@ def load_matrices():
            outs.append(temp)
            
     return outs
-
-embed_ix, embed_matrix, cats = load_matrices()
 
 def get_closest(inputs, stochastic=False):
     """
@@ -39,10 +34,13 @@ def get_closest(inputs, stochastic=False):
         return cats[np.random.choice(sims.argsort()[0, -5:][::-1].tolist())]
     else: 
         return cats[np.argmax(sims)]
-
-input_str = input("Enter your text: ")
-chosen_class = get_closest(str(input_str)) 
-f = [i for i in files if chosen_class in i]
-print("Downloading closest class...")
-subprocess.run(["gsutil", "cp", f[0], 'data/'])
+if __name__ == "__main__":
+    with open('data/files.pkl', 'rb') as f:
+        files = pickle.load(f)
+    embed_ix, embed_matrix, cats = load_matrices()
+    input_str = input("Enter your text: ")
+    chosen_class = get_closest(str(input_str)) 
+    f = [i for i in files if chosen_class in i]
+    print("Downloading closest class...")
+    subprocess.run(["gsutil", "cp", f[0], 'data/'])
 
