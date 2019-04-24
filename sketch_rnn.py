@@ -6,17 +6,20 @@ import os
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.autograd.variable import Variable
 import torch.nn.functional as F
 
-from torch.autograd.variable import Variable
+import warnings
+warnings.filterwarnings('ignore')
+
 
 use_cuda = torch.cuda.is_available()
-
 checks = [f for f in os.listdir('data') if f.endswith('.npz')]
 if not checks:
-    raise Error("No .npz files found in data folder")
+    raise FileNotFoundError("No .npz files found in data folder")
 else: 
     data_location = 'data/{}'.format(checks[0])
+
 
 class HParams():
     def __init__(self):
@@ -227,7 +230,7 @@ class Model():
         p = torch.stack([p1,p2,p3],2)
         return mask,dx,dy,p
 
-    def train(self, epoch):
+    def train(self, iteration):
         self.encoder.train()
         self.decoder.train()
         batch, lengths = make_batch(hp.batch_size)
@@ -256,7 +259,7 @@ class Model():
         self.eta_step = 1-(1-hp.eta_min)*hp.R
         # compute losses:
         LKL = self.kullback_leibler_loss()
-        LR = self.reconstruction_loss(mask,dx,dy,p,epoch)
+        LR = self.reconstruction_loss(mask,dx,dy,p,iteration)
         loss = LR + LKL
         # gradient step
         loss.backward()
@@ -266,14 +269,13 @@ class Model():
         # optim step
         self.encoder_optimizer.step()
         self.decoder_optimizer.step()
-        # some print and save:
-        if epoch%1==0:
-            print('epoch',epoch,'loss',loss.data[0],'LR',LR.data[0],'LKL',LKL.data[0])
+        if not iteration % 1:
             self.encoder_optimizer = lr_decay(self.encoder_optimizer)
             self.decoder_optimizer = lr_decay(self.decoder_optimizer)
-        if epoch%100==0:
-            self.save(epoch)
-            self.conditional_generation(epoch)
+        if not iteration % 200:
+            print(f'Iteration: {iteration}\n{"-" * 30}\nFull loss: {loss.data[0]}\nReconstruction loss: {LR.data[0]}\nKL loss: {LKL.data[0]}\n')
+            self.save(iteration)
+#            self.conditional_generation(iteration)
 
     def bivariate_normal_pdf(self, dx, dy):
         z_x = ((dx-self.mu_x)/self.sigma_x)**2
@@ -300,12 +302,11 @@ class Model():
             KL_min = Variable(torch.Tensor([hp.KL_min])).detach()
         return hp.wKL*self.eta_step * torch.max(LKL,KL_min)
 
-    def save(self, epoch):
-        sel = np.random.rand()
+    def save(self, iteration):
         torch.save(self.encoder.state_dict(), \
-            'encoderRNN_sel_%3f_epoch_%d.pth' % (sel,epoch))
+            'checkpoints/encoderRNN_iter_%d.pth' % (iteration))
         torch.save(self.decoder.state_dict(), \
-            'decoderRNN_sel_%3f_epoch_%d.pth' % (sel,epoch))
+            'checkpoints/decoderRNN_iter_%d.pth' % (iteration))
 
     def load(self, encoder_name, decoder_name):
         saved_encoder = torch.load(encoder_name)
@@ -313,7 +314,7 @@ class Model():
         self.encoder.load_state_dict(saved_encoder)
         self.decoder.load_state_dict(saved_decoder)
 
-    def conditional_generation(self, epoch):
+    def conditional_generation(self, iteration):
         batch,lengths = make_batch(1)
         # should remove dropouts:
         self.encoder.train(False)
@@ -350,7 +351,7 @@ class Model():
         y_sample = np.cumsum(seq_y, 0)
         z_sample = np.array(seq_z)
         sequence = np.stack([x_sample,y_sample,z_sample]).T
-        make_image(sequence, epoch)
+        make_image(sequence, iteration)
 
     def sample_next_state(self):
 
@@ -397,8 +398,9 @@ def sample_bivariate_normal(mu_x,mu_y,sigma_x,sigma_y,rho_xy, greedy=False):
     x = np.random.multivariate_normal(mean, cov, 1)
     return x[0][0], x[0][1]
 
-def make_image(sequence, epoch, name='_output_'):
-    """plot drawing with separated strokes""" strokes = np.split(sequence, np.where(sequence[:,2]>0)[0]+1)
+def make_image(sequence, iteration, name='generated_'):
+    """plot drawing with separated strokes""" 
+    strokes = np.split(sequence, np.where(sequence[:,2]>0)[0]+1)
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     for s in strokes:
@@ -407,17 +409,18 @@ def make_image(sequence, epoch, name='_output_'):
     canvas.draw()
     pil_image = PIL.Image.frombytes('RGB', canvas.get_width_height(),
                  canvas.tostring_rgb())
-    name = str(epoch)+name+'.jpg'
-    pil_image.save(name,"JPEG")
+    name = name + str(iteration) + '.jpg'
+    pil_image.save('assets/'+name,"JPEG")
     plt.close("all")
 
 if __name__=="__main__":
-    model = Model()
-    for epoch in range(200):
-        model.train(epoch)
 
-    '''
+    model = Model()
+    print("Starting training run...")
+    for iteration in range(1000):
+        model.train(iteration)
+
     model.load('encoder.pth','decoder.pth')
-    model.conditional_generation(0)
-    #'''
+    for i in range(9):
+        model.conditional_generation(i)
 

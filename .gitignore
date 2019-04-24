@@ -1,5 +1,6 @@
 *.ipynb_checkpoints
 *.ipynb
-*.pkl
 *.vec
 *.npz
+data/embed_ix.pkl
+data/embed_matrix.pkl
