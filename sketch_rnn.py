@@ -303,11 +303,9 @@ class Model():
         return hp.wKL*self.eta_step * torch.max(LKL,KL_min)
 
     def save(self, iteration):
-        torch.save(self.encoder.state_dict(), \
-            'checkpoints/encoderRNN_iter_%d.pth' % (iteration))
-        torch.save(self.decoder.state_dict(), \
-            'checkpoints/decoderRNN_iter_%d.pth' % (iteration))
-
+        torch.save(self.encoder.state_dict(), 'checkpoints/encoderRNN_iter_{}.pth'.format(iteration))
+        torch.save(self.decoder.state_dict(), 'decoderRNN_iter_{}.pth'.format(iteration))
+        
     def load(self, encoder_name, decoder_name):
         saved_encoder = torch.load(encoder_name)
         saved_decoder = torch.load(decoder_name)
@@ -409,18 +407,18 @@ def make_image(sequence, iteration, name='generated_'):
     canvas.draw()
     pil_image = PIL.Image.frombytes('RGB', canvas.get_width_height(),
                  canvas.tostring_rgb())
-    name = name + str(iteration) + '.jpg'
-    pil_image.save('assets/'+name,"JPEG")
+    name = 'assets/' + name + str(iteration) + '.jpg'
+    pil_image.save(name,"JPEG")
     plt.close("all")
 
 if __name__=="__main__":
 
     model = Model()
-    print("Starting training run...")
+    print("Starting training run...\n")
     for iteration in range(1000):
         model.train(iteration)
 
-    model.load('encoder.pth','decoder.pth')
-    for i in range(9):
-        model.conditional_generation(i)
+#    model.load('encoder.pth','decoder.pth')
+#    for i in range(9):
+#        model.conditional_generation(i)
 

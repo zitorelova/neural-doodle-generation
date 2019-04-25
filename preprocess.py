@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 def _process_embeddings(embedding_file, word_ix, save_outputs=True):
     """
-    Function for preparing the raw fasttext embedding files and optionally saving them as processed pickle files
+    Function for preparing the raw fasttext embedding files and saving them as processed pickle files
 
     Arguments:
     embedding_file (str): Path to the raw embedding file
@@ -31,20 +31,22 @@ def _process_embeddings(embedding_file, word_ix, save_outputs=True):
         embedding_vector = embeddings_index.get(word)
         if embedding_vector is not None: embedding_matrix[i] = embedding_vector
 
-    print(f"Loaded fasttext vectors in {(time.time() - load_start) / 60  :.2f} minutes.")
+    print(f"Loaded and processed fasttext vectors in {(time.time() - load_start) / 60  :.2f} minutes.")
 
     if save_outputs:
-        for filename in ['embed_matrix', 'embed_ix']:
-            with open(f'data/{filename}.pkl', 'wb') as f:
-                pickle.dump(filename, f)
+        with open(f'data/embed_matrix.pkl', 'wb') as f:
+            pickle.dump(embedding_matrix, f)
+        with open(f'data/embed_ix.pkl', 'wb') as f:
+            pickle.dump(embeddings_index, f)
         print(f'Outputs saved to pickle files.')
     
-    return embedding_matrix, embeddings_index
 
 
 if __name__ == "__main__":
     ft = 'data/wiki-news-300d-1M.vec'
-    subprocess.run(['wget', '-O', ft, 'https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip']) 
+    subprocess.run(['wget', '-O', ft+'.zip', 'https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip'])
+    subprocess.run(['unzip', ft+'.zip'])
+    subprocess.run(['rm', ft+'.zip'])
     with open('data/categories.pkl', 'rb') as f:
         cats = pickle.load(f)
     word_ix = {word: ix for ix, word in enumerate(cats)}
