@@ -6,6 +6,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from shutil import move
 
 def load_matrices():
+	"""
+	Function for loading in matrices from pickle files
+	"""
     outs = []
     for filename in ['embed_ix', 'embed_matrix', 'categories']:
         with open(f'data/{filename}.pkl', 'rb') as f:
@@ -34,7 +37,9 @@ def get_closest(inputs, stochastic=False):
         return cats[np.random.choice(sims.argsort()[0, -5:][::-1].tolist())]
     else: 
         return cats[np.argmax(sims)]
+
 if __name__ == "__main__":
+
     with open('data/files.pkl', 'rb') as f:
         files = pickle.load(f)
     embed_ix, embed_matrix, cats = load_matrices()

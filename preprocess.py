@@ -43,6 +43,7 @@ def _process_embeddings(embedding_file, word_ix, save_outputs=True):
 
 
 if __name__ == "__main__":
+
     ft = 'data/wiki-news-300d-1M.vec'
     subprocess.run(['wget', '-O', ft+'.zip', 'https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip'])
     subprocess.run(['unzip', ft+'.zip'])

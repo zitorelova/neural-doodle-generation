@@ -1,28 +1,32 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import PIL
-import os
 
+import cv2
 import torch
 import torch.nn as nn
 from torch import optim
 from torch.autograd.variable import Variable
 import torch.nn.functional as F
+from skimage.util import montage
 
 import warnings
 warnings.filterwarnings('ignore')
 
+gpu = torch.cuda.is_available()
 
-use_cuda = torch.cuda.is_available()
-checks = [f for f in os.listdir('data') if f.endswith('.npz')]
-if not checks:
-    raise FileNotFoundError("No .npz files found in data folder")
-else: 
-    data_location = 'data/{}'.format(checks[0])
-
-
-class HParams():
+class Hps():
+    """
+    Default hyperparameters for training the model
+    
+    """
     def __init__(self):
+        checks = [f for f in os.listdir('data') if f.endswith('.npz')]
+        if not checks:
+            raise FileNotFoundError("No .npz files found in data folder")
+        else: 
+            data_location = 'data/{}'.format(checks[0])
         self.data_location = data_location
         self.enc_hidden_size = 256
         self.dec_hidden_size = 512
@@ -41,15 +45,16 @@ class HParams():
         self.temperature = 0.4
         self.max_seq_length = 200
 
-hp = HParams()
+hp = Hps()
 
-def max_size(data):
-    """larger sequence length in the data set"""
-    sizes = [len(seq) for seq in data]
-    return max(sizes)
+def clean_strokes(strokes):
+    """
+    Remove stroke sequences that are too long or too short
 
-def purify(strokes):
-    """removes to small or too long sequences + removes large gaps"""
+    Arguments:
+    strokes (np.array): Sequence of strokes to clean
+    
+    """
     data = []
     for seq in strokes:
         if seq.shape[0] <= hp.max_seq_length and seq.shape[0] > 10:
@@ -59,8 +64,26 @@ def purify(strokes):
             data.append(seq)
     return data
 
+def max_size(data):
+    """
+    Get longest sequence length
+
+    Arguments:
+    data (np.array): Array of stroke sequences
+
+    """
+    sizes = [len(seq) for seq in data]
+    return max(sizes)
+
 def calculate_normalizing_scale_factor(strokes):
-    """Calculate the normalizing factor explained in appendix of sketch-rnn."""
+    """
+    Calculate normalizing scale factor as explained in section 1 (Dataset Details) of 
+    the supplementary material for A Neural Representation of Sketch Drawings
+   
+    Arguments:
+    strokes (np.array): Array of strokes to normalize
+
+    """
     data = []
     for i in range(len(strokes)):
         for j in range(len(strokes[i])):
@@ -70,7 +93,13 @@ def calculate_normalizing_scale_factor(strokes):
     return np.std(data)
 
 def normalize(strokes):
-    """Normalize entire dataset (delta_x, delta_y) by the scaling factor."""
+    """
+    Normalize the entire dataset (delta_x, delta_y) by the scaling factor
+
+    Arguments:
+    strokes (np.array): Array of strokes to normalize
+    
+    """
     data = []
     scale_factor = calculate_normalizing_scale_factor(strokes)
     for seq in strokes:
@@ -80,11 +109,18 @@ def normalize(strokes):
 
 dataset = np.load(hp.data_location, encoding='latin1')
 data = dataset['train']
-data = purify(data)
+data = clean_strokes(data)
 data = normalize(data)
 Nmax = max_size(data)
 
 def make_batch(batch_size):
+    """
+    Create batch for model training
+
+    Arguments:
+    batch_size (int): Size of batch for training
+
+    """
     batch_idx = np.random.choice(len(data),batch_size)
     batch_sequences = [data[idx] for idx in batch_idx]
     strokes = []
@@ -102,35 +138,50 @@ def make_batch(batch_size):
         strokes.append(new_seq)
         indice += 1
 
-    if use_cuda:
+    if gpu:
         batch = Variable(torch.from_numpy(np.stack(strokes,1)).cuda().float())
     else:
         batch = Variable(torch.from_numpy(np.stack(strokes,1)).float())
     return batch, lengths
 
 def lr_decay(optimizer):
-    """Decay learning rate by a factor of lr_decay"""
+    """
+    Decay learning rate by a factor of lr_decay
+
+    Arguments:
+    optimizer (torch.optim.Optimizer): Pytorch optimizer to decay
+    
+    """
     for param_group in optimizer.param_groups:
         if param_group['lr']>hp.min_lr:
             param_group['lr'] *= hp.lr_decay
     return optimizer
 
 class EncoderRNN(nn.Module):
+    """
+    Encoder class for the model
+
+    """
     def __init__(self):
         super(EncoderRNN, self).__init__()
-        # bidirectional lstm:
         self.lstm = nn.LSTM(5, hp.enc_hidden_size, \
             dropout=hp.dropout, bidirectional=True)
-        # create mu and sigma from lstm's last output:
         self.fc_mu = nn.Linear(2*hp.enc_hidden_size, hp.Nz)
         self.fc_sigma = nn.Linear(2*hp.enc_hidden_size, hp.Nz)
-        # active dropout:
         self.train()
 
     def forward(self, inputs, batch_size, hidden_cell=None):
+        """
+        Forward pass through encoder
+        
+        Arguments:
+        inputs (torch.Tensor): Inputs to the encoder model
+        batch_size (int): Size of batch for model training
+        hidden_cell (torch.Tensor): Hidden layer for encoder model
+
+        """
         if hidden_cell is None:
-            # then must init with zeros
-            if use_cuda:
+            if gpu: 
                 hidden = torch.zeros(2, batch_size, hp.enc_hidden_size).cuda()
                 cell = torch.zeros(2, batch_size, hp.enc_hidden_size).cuda()
             else:
@@ -138,53 +189,53 @@ class EncoderRNN(nn.Module):
                 cell = torch.zeros(2, batch_size, hp.enc_hidden_size)
             hidden_cell = (hidden, cell)
         _, (hidden,cell) = self.lstm(inputs.float(), hidden_cell)
-        # hidden is (2, batch_size, hidden_size), we want (batch_size, 2*hidden_size):
         hidden_forward, hidden_backward = torch.split(hidden,1,0)
         hidden_cat = torch.cat([hidden_forward.squeeze(0), hidden_backward.squeeze(0)],1)
-        # mu and sigma:
         mu = self.fc_mu(hidden_cat)
         sigma_hat = self.fc_sigma(hidden_cat)
         sigma = torch.exp(sigma_hat/2.)
-        # N ~ N(0,1)
         z_size = mu.size()
-        if use_cuda:
+        if gpu:
             N = torch.normal(torch.zeros(z_size),torch.ones(z_size)).cuda()
         else:
             N = torch.normal(torch.zeros(z_size),torch.ones(z_size))
         z = mu + sigma*N
-        # mu and sigma_hat are needed for LKL loss
         return z, mu, sigma_hat
 
 class DecoderRNN(nn.Module):
+    """
+    Decoder class for the model
+
+    """
     def __init__(self):
         super(DecoderRNN, self).__init__()
-        # to init hidden and cell from z:
         self.fc_hc = nn.Linear(hp.Nz, 2*hp.dec_hidden_size)
-        # unidirectional lstm:
         self.lstm = nn.LSTM(hp.Nz+5, hp.dec_hidden_size, dropout=hp.dropout)
-        # create proba distribution parameters from hiddens:
         self.fc_params = nn.Linear(hp.dec_hidden_size,6*hp.M+3)
 
     def forward(self, inputs, z, hidden_cell=None):
+        """
+        Forward pass through decoder
+
+        Arguments:
+        inputs (torch.Tensor): Inputs to the decoder model
+        z (torch.Tensor): Vector z constructed from outputs of encoder model
+        hidden_cell (torch.Tensor): Hidden layer for decoder model
+
+        """
+
         if hidden_cell is None:
-            # then we must init from z
             hidden,cell = torch.split(F.tanh(self.fc_hc(z)),hp.dec_hidden_size,1)
             hidden_cell = (hidden.unsqueeze(0).contiguous(), cell.unsqueeze(0).contiguous())
         outputs,(hidden,cell) = self.lstm(inputs, hidden_cell)
-        # in training we feed the lstm with the whole input in one shot
-        # and use all outputs contained in 'outputs', while in generate
-        # mode we just feed with the last generated sample:
         if self.training:
             y = self.fc_params(outputs.view(-1, hp.dec_hidden_size))
         else:
             y = self.fc_params(hidden.view(-1, hp.dec_hidden_size))
-        # separate pen and mixture params:
         params = torch.split(y,6,1)
-        params_mixture = torch.stack(params[:-1]) # trajectory
-        params_pen = params[-1] # pen up/down
-        # identify mixture params:
+        params_mixture = torch.stack(params[:-1]) 
+        params_pen = params[-1] 
         pi,mu_x,mu_y,sigma_x,sigma_y,rho_xy = torch.split(params_mixture,1,2)
-        # preprocess params::
         if self.training:
             len_out = Nmax+1
         else:
@@ -200,8 +251,12 @@ class DecoderRNN(nn.Module):
         return pi,mu_x,mu_y,sigma_x,sigma_y,rho_xy,q,hidden,cell
 
 class Model():
+    """
+    Full VAE model (Encoder + Decoder)
+    
+    """
     def __init__(self):
-        if use_cuda:
+        if gpu:
             self.encoder = EncoderRNN().cuda()
             self.decoder = DecoderRNN().cuda()
         else:
@@ -212,7 +267,15 @@ class Model():
         self.eta_step = hp.eta_min
 
     def make_target(self, batch, lengths):
-        if use_cuda:
+        """
+        Create targets for the model
+
+        Arguments:
+        batch (torch.Tensor): Batch to create targets from
+        lengths (list): lengths of each of the inputs
+
+        """
+        if gpu:
             eos = torch.stack([torch.Tensor([0,0,0,0,1])]*batch.size()[1]).cuda().unsqueeze(0)
         else:
             eos = torch.stack([torch.Tensor([0,0,0,0,1])]*batch.size()[1]).unsqueeze(0)
@@ -220,7 +283,7 @@ class Model():
         mask = torch.zeros(Nmax+1, batch.size()[1])
         for indice,length in enumerate(lengths):
             mask[:length,indice] = 1
-        if use_cuda:
+        if gpu:
             mask = mask.cuda()
         dx = torch.stack([batch.data[:,:,0]]*hp.M,2)
         dy = torch.stack([batch.data[:,:,1]]*hp.M,2)
@@ -231,42 +294,36 @@ class Model():
         return mask,dx,dy,p
 
     def train(self, iteration):
+        """
+        Function for training the model
+
+        Arguments:
+        iteration (int): The current iteration number
+
+        """
         self.encoder.train()
         self.decoder.train()
         batch, lengths = make_batch(hp.batch_size)
-        # encode:
         z, self.mu, self.sigma = self.encoder(batch, hp.batch_size)
-        # create start of sequence:
-        if use_cuda:
+        if gpu:
             sos = torch.stack([torch.Tensor([0,0,1,0,0])]*hp.batch_size).cuda().unsqueeze(0)
         else:
             sos = torch.stack([torch.Tensor([0,0,1,0,0])]*hp.batch_size).unsqueeze(0)
-        # had sos at the begining of the batch:
         batch_init = torch.cat([sos, batch],0)
-        # expend z to be ready to concatenate with inputs:
         z_stack = torch.stack([z]*(Nmax+1))
-        # inputs is concatenation of z and batch_inputs
         inputs = torch.cat([batch_init, z_stack],2)
-        # decode:
         self.pi, self.mu_x, self.mu_y, self.sigma_x, self.sigma_y, \
             self.rho_xy, self.q, _, _ = self.decoder(inputs, z)
-        # prepare targets:
         mask,dx,dy,p = self.make_target(batch, lengths)
-        # prepare optimizers:
         self.encoder_optimizer.zero_grad()
         self.decoder_optimizer.zero_grad()
-        # update eta for LKL:
         self.eta_step = 1-(1-hp.eta_min)*hp.R
-        # compute losses:
         LKL = self.kullback_leibler_loss()
-        LR = self.reconstruction_loss(mask,dx,dy,p,iteration)
+        LR = self.reconstruction_loss(mask,dx,dy,p)
         loss = LR + LKL
-        # gradient step
         loss.backward()
-        # gradient cliping
         nn.utils.clip_grad_norm(self.encoder.parameters(), hp.grad_clip)
         nn.utils.clip_grad_norm(self.decoder.parameters(), hp.grad_clip)
-        # optim step
         self.encoder_optimizer.step()
         self.decoder_optimizer.step()
         if not iteration % 1:
@@ -275,9 +332,16 @@ class Model():
         if not iteration % 200:
             print(f'Iteration: {iteration}\n{"-" * 30}\nFull loss: {loss.data[0]}\nReconstruction loss: {LR.data[0]}\nKL loss: {LKL.data[0]}\n')
             self.save(iteration)
-#            self.conditional_generation(iteration)
 
     def bivariate_normal_pdf(self, dx, dy):
+        """
+        Bivariate normal pdf modeled from GMM with N normal distributions
+
+        Arguments:
+        dx (torch.Tensor): Delta x offset term to parameterize the bivariate normal distribution 
+        dy (torch.Tensor): Delta y offset term to parameterize the bivariate normal distribution
+
+        """
         z_x = ((dx-self.mu_x)/self.sigma_x)**2
         z_y = ((dy-self.mu_y)/self.sigma_y)**2
         z_xy = (dx-self.mu_x)*(dy-self.mu_y)/(self.sigma_x*self.sigma_y)
@@ -286,7 +350,16 @@ class Model():
         norm = 2*np.pi*self.sigma_x*self.sigma_y*torch.sqrt(1-self.rho_xy**2)
         return exp/norm
 
-    def reconstruction_loss(self, mask, dx, dy, p, epoch):
+    def reconstruction_loss(self, mask, dx, dy, p):
+        """
+        Reconstruction loss to be used as criterion for the model
+
+        Arguments:
+        mask (torch.Tensor): Mask for LS portion of reconstruction loss
+        dx (torch.Tensor): Delta x that parameterizes the bivariate normal distribution
+        dy (torch.Tensor): Delta y that parameterizes the bivariate normal distribution
+        p  (torch.Tensor): Pen state terms for LP portion of reconstruction loss
+        """
         pdf = self.bivariate_normal_pdf(dx, dy)
         LS = -torch.sum(mask*torch.log(1e-5+torch.sum(self.pi * pdf, 2)))\
             /float(Nmax*hp.batch_size)
@@ -294,32 +367,57 @@ class Model():
         return LS+LP
 
     def kullback_leibler_loss(self):
+        """
+        Kullback-Leibler loss to be used as criterion for the model
+
+        """
         LKL = -0.5*torch.sum(1+self.sigma-self.mu**2-torch.exp(self.sigma))\
             /float(hp.Nz*hp.batch_size)
-        if use_cuda:
+        if gpu:
             KL_min = Variable(torch.Tensor([hp.KL_min]).cuda()).detach()
         else:
             KL_min = Variable(torch.Tensor([hp.KL_min])).detach()
         return hp.wKL*self.eta_step * torch.max(LKL,KL_min)
 
     def save(self, iteration):
+        """
+        Save state dict of the model
+
+        Arguments:
+        iteration (int): Iteration number
+
+        """
         torch.save(self.encoder.state_dict(), 'checkpoints/encoderRNN_iter_{}.pth'.format(iteration))
-        torch.save(self.decoder.state_dict(), 'decoderRNN_iter_{}.pth'.format(iteration))
+        torch.save(self.decoder.state_dict(), 'checkpoints/decoderRNN_iter_{}.pth'.format(iteration))
         
     def load(self, encoder_name, decoder_name):
+        """
+
+        Load in saved model from .pth file
+
+        Arguments:
+        encoder_name (str): Path to the saved encoder weights
+        decoder_name (str): Path to the saved decoder weights
+
+        """
         saved_encoder = torch.load(encoder_name)
         saved_decoder = torch.load(decoder_name)
         self.encoder.load_state_dict(saved_encoder)
         self.decoder.load_state_dict(saved_decoder)
 
     def conditional_generation(self, iteration):
+        """
+        Generate image from the model
+
+        Arguments:
+        iteration (int): Iteration number
+
+        """
         batch,lengths = make_batch(1)
-        # should remove dropouts:
         self.encoder.train(False)
         self.decoder.train(False)
-        # encode:
         z, _, _ = self.encoder(batch, 1)
-        if use_cuda:
+        if gpu:
             sos = Variable(torch.Tensor([0,0,1,0,0]).view(1,1,-1).cuda())
         else:
             sos = Variable(torch.Tensor([0,0,1,0,0]).view(1,1,-1))
@@ -330,21 +428,16 @@ class Model():
         hidden_cell = None
         for i in range(Nmax):
             input = torch.cat([s,z.unsqueeze(0)],2)
-            # decode:
             self.pi, self.mu_x, self.mu_y, self.sigma_x, self.sigma_y, \
                 self.rho_xy, self.q, hidden, cell = \
                     self.decoder(input, z, hidden_cell)
             hidden_cell = (hidden, cell)
-            # sample from parameters:
             s, dx, dy, pen_down, eos = self.sample_next_state()
-            #------
             seq_x.append(dx)
             seq_y.append(dy)
             seq_z.append(pen_down)
             if eos:
-                print(i)
                 break
-        # visualize result:
         x_sample = np.cumsum(seq_x, 0)
         y_sample = np.cumsum(seq_y, 0)
         z_sample = np.array(seq_z)
@@ -354,21 +447,25 @@ class Model():
     def sample_next_state(self):
 
         def adjust_temp(pi_pdf):
+            """
+            Adjust temperature to control randomness
+
+            Arguments:
+            pi_pdf (torch.Tensor): Probability density function 
+
+            """
             pi_pdf = np.log(pi_pdf)/hp.temperature
             pi_pdf -= pi_pdf.max()
             pi_pdf = np.exp(pi_pdf)
             pi_pdf /= pi_pdf.sum()
             return pi_pdf
 
-        # get mixture indice:
         pi = self.pi.data[0,0,:].cpu().numpy()
         pi = adjust_temp(pi)
         pi_idx = np.random.choice(hp.M, p=pi)
-        # get pen state:
         q = self.q.data[0,0,:].cpu().numpy()
         q = adjust_temp(q)
         q_idx = np.random.choice(3, p=q)
-        # get mixture params:
         mu_x = self.mu_x.data[0,0,pi_idx]
         mu_y = self.mu_y.data[0,0,pi_idx]
         sigma_x = self.sigma_x.data[0,0,pi_idx]
@@ -379,13 +476,24 @@ class Model():
         next_state[0] = x
         next_state[1] = y
         next_state[q_idx+2] = 1
-        if use_cuda:
+        if gpu:
             return Variable(next_state.cuda()).view(1,1,-1),x,y,q_idx==1,q_idx==2
         else:
             return Variable(next_state).view(1,1,-1),x,y,q_idx==1,q_idx==2
 
 def sample_bivariate_normal(mu_x,mu_y,sigma_x,sigma_y,rho_xy, greedy=False):
-    # inputs must be floats
+    """
+    Sample from bivariate normal parameterized by outputs from encoder
+
+    Arguments:
+    mu_x (torch.Tensor): Mean x for parameterizing bivariate normal distribution
+    mu_y (torch.Tensor): Mean y for parameterizing bivariate normal distribution
+    sigma_x (torch.Tensor): Standard deviation x for parameterizing bivariate normal distribution
+    sigma_y (torch.Tensor): Standard deviation y for parameterizing bivariate normal distribution
+    rho_xy (torch.Tensor): Correlation parameter for bivariate normal distribution
+    greedy (boolean): Whether to randomly sample from distribution
+
+    """
     if greedy:
       return mu_x,mu_y
     mean = [mu_x, mu_y]
@@ -397,10 +505,19 @@ def sample_bivariate_normal(mu_x,mu_y,sigma_x,sigma_y,rho_xy, greedy=False):
     return x[0][0], x[0][1]
 
 def make_image(sequence, iteration, name='generated_'):
-    """plot drawing with separated strokes""" 
+    """
+    Plot strokes as image and save as JPEG
+
+    Arguments:
+    sequence (np.array): Numpy array of strokes from conditional generation
+    iteration (int): Iteration number
+    name (str): Prefix to use when saving generated image
+
+    """ 
     strokes = np.split(sequence, np.where(sequence[:,2]>0)[0]+1)
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
+    plt.axis('off')
     for s in strokes:
         plt.plot(s[:,0],-s[:,1])
     canvas = plt.get_current_fig_manager().canvas
@@ -411,14 +528,53 @@ def make_image(sequence, iteration, name='generated_'):
     pil_image.save(name,"JPEG")
     plt.close("all")
 
+# Deprecated
+def stitch_images_old(directory='assets', width=480, length=640):
+    """
+    Stitch generated images together in a grid
+
+    Arguments:
+    directory (str): Directory where generated images are located
+    width (int): Width of images
+    length (int): Length of images
+  
+    """
+    img_paths = [f for f in os.listdir(directory) if 'generated' in f]
+    grid = np.zeros((width * int(len(img_paths) ** 0.5), length * int(len(img_paths) ** 0.5), 3))
+    lat, lon = 0, 0
+    for img in img_paths:
+        if lat == grid.shape[0]:
+            lat = 0
+            lon += length
+        grid[lat: lat + width, lon: lon + length, :] = plt.imread(os.path.join(directory, img))
+        lat += width
+    return grid
+     
+def stitch_images(directory='assets'):
+    """
+    Stitch generated images together in a grid
+
+    Arguments:
+    directory (str): Directory where generated images are located
+
+    """
+    img_paths = [f for f in os.listdir(directory) if 'generated' in f]
+    assert len(img_paths) == 9
+    raw_arr = [plt.imread(os.path.join(directory, im)) for im in img_paths]
+    raw_arr = np.stack(raw_arr, axis=0)
+    stitched = montage(raw_arr, grid_shape=(3, 3), multichannel=True)
+    cv2.imwrite(os.path.join(directory, 'stitched_img.jpg'), stitched)    
+
 if __name__=="__main__":
 
     model = Model()
+    iters = 2000
     print("Starting training run...\n")
-    for iteration in range(1000):
+    for iteration in range(iters):
         model.train(iteration)
-
-#    model.load('encoder.pth','decoder.pth')
-#    for i in range(9):
-#        model.conditional_generation(i)
+    model.load('checkpoints/encoderRNN_iter_{}.pth'.format(iters),'checkpoints/decoderRNN_iter_{}.pth'.format(iters))
+    print("Generating images...\n")
+    for i in range(9):
+        model.conditional_generation(i)
+    stitch_images()
 
