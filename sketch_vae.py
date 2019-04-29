@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import PIL
 
 import cv2
+import scipy.stats
 import torch
 import torch.nn as nn
 from torch import optim
@@ -333,7 +334,6 @@ class Model():
         if not iteration % 200:
             print(f'Iteration: {iteration}\n{"-" * 30}\nFull loss: {loss.item() :.3f}\nReconstruction loss: {LR.item() :.3f}\nKL loss: {LKL.item() :.3f}\n')
             self.save(iteration)
-#            self.conditional_generation(iteration)
 
     def bivariate_normal_pdf(self, dx, dy):
         """
@@ -488,6 +488,7 @@ def sample_bivariate_normal(mu_x,mu_y,sigma_x,sigma_y,rho_xy, greedy=False):
     Sample from bivariate normal parameterized by outputs from encoder
 
     Arguments:
+
     mu_x (torch.Tensor): Mean x for parameterizing bivariate normal distribution
     mu_y (torch.Tensor): Mean y for parameterizing bivariate normal distribution
     sigma_x (torch.Tensor): Standard deviation x for parameterizing bivariate normal distribution
@@ -503,6 +504,7 @@ def sample_bivariate_normal(mu_x,mu_y,sigma_x,sigma_y,rho_xy, greedy=False):
     sigma_y *= np.sqrt(hp.temperature)
     cov = [[sigma_x * sigma_x, rho_xy * sigma_x * sigma_y],\
         [rho_xy * sigma_x * sigma_y, sigma_y * sigma_y]]
+#    x = scipy.stats.multivariate_normal(mean, cov)
     x = np.random.multivariate_normal(mean, cov, 1)
     return x[0][0], x[0][1]
 
@@ -552,7 +554,7 @@ def stitch_images_old(directory='assets', width=480, length=640):
         lat += width
     return grid
      
-def stitch_images(directory='assets'):
+def stitch_images(directory='assets', out_dir='neural-style-transfer/data'):
     """
     Stitch generated images together in a grid
 
@@ -565,12 +567,12 @@ def stitch_images(directory='assets'):
     raw_arr = [plt.imread(os.path.join(directory, im)) for im in img_paths]
     raw_arr = np.stack(raw_arr, axis=0)
     stitched = montage(raw_arr, grid_shape=(3, 3), multichannel=True)
-    cv2.imwrite(os.path.join(directory, 'stitched_img.jpg'), stitched)    
+    cv2.imwrite(os.path.join(out_dir, 'stitched_img.jpg'), stitched)    
 
 if __name__=="__main__":
 
     model = Model()
-    iters = 4000
+    iters = 5000
     print("Starting training run...\n")
     for iteration in range(iters):
         model.train(iteration)
@@ -579,4 +581,3 @@ if __name__=="__main__":
     for i in range(9):
         model.conditional_generation(i)
     stitch_images()
-
