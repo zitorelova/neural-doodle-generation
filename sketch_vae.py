@@ -303,6 +303,7 @@ class Model():
         """
         self.encoder.train()
         self.decoder.train()
+        iteration += 1
         batch, lengths = make_batch(hp.batch_size)
         z, self.mu, self.sigma = self.encoder(batch, hp.batch_size)
         if gpu:
@@ -330,8 +331,9 @@ class Model():
             self.encoder_optimizer = lr_decay(self.encoder_optimizer)
             self.decoder_optimizer = lr_decay(self.decoder_optimizer)
         if not iteration % 200:
-            print(f'Iteration: {iteration}\n{"-" * 30}\nFull loss: {loss.data[0]}\nReconstruction loss: {LR.data[0]}\nKL loss: {LKL.data[0]}\n')
+            print(f'Iteration: {iteration}\n{"-" * 30}\nFull loss: {loss.item() :.3f}\nReconstruction loss: {LR.item() :.3f}\nKL loss: {LKL.item() :.3f}\n')
             self.save(iteration)
+#            self.conditional_generation(iteration)
 
     def bivariate_normal_pdf(self, dx, dy):
         """
@@ -568,7 +570,7 @@ def stitch_images(directory='assets'):
 if __name__=="__main__":
 
     model = Model()
-    iters = 2000
+    iters = 4000
     print("Starting training run...\n")
     for iteration in range(iters):
         model.train(iteration)

@@ -6,9 +6,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from shutil import move
 
 def load_matrices():
-	"""
-	Function for loading in matrices from pickle files
-	"""
+    """
+    Function for loading in matrices from pickle files
+    """
     outs = []
     for filename in ['embed_ix', 'embed_matrix', 'categories']:
         with open(f'data/{filename}.pkl', 'rb') as f:
