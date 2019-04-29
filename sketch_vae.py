@@ -11,6 +11,7 @@ from torch import optim
 from torch.autograd.variable import Variable
 import torch.nn.functional as F
 from skimage.util import montage
+from time import time
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -570,7 +571,7 @@ def stitch_images(directory='assets', out_dir='neural-style-transfer/data'):
     cv2.imwrite(os.path.join(out_dir, 'stitched_img.jpg'), stitched)    
 
 if __name__=="__main__":
-
+    start = time()
     model = Model()
     iters = 5000
     print("Starting training run...\n")
@@ -581,3 +582,4 @@ if __name__=="__main__":
     for i in range(9):
         model.conditional_generation(i)
     stitch_images()
+    print(f'Finished model training in {(time() - start) / 60 :.3f} minutes}')
