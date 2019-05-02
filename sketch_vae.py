@@ -332,7 +332,7 @@ class Model():
         if not iteration % 1:
             self.encoder_optimizer = lr_decay(self.encoder_optimizer)
             self.decoder_optimizer = lr_decay(self.decoder_optimizer)
-        if not iteration % 200:
+        if not iteration % 1000:
             print(f'Iteration: {iteration}\n{"-" * 30}\nFull loss: {loss.item() :.3f}\nReconstruction loss: {LR.item() :.3f}\nKL loss: {LKL.item() :.3f}\n')
             self.save(iteration)
 
@@ -529,7 +529,7 @@ def make_image(sequence, iteration, name='generated_'):
     canvas.draw()
     pil_image = PIL.Image.frombytes('RGB', canvas.get_width_height(),
                  canvas.tostring_rgb())
-    name = 'neural-style-transfer/contents' + name + str(iteration) + '.jpg'
+    name = 'neural-style-transfer/contents/' + name + str(iteration) + '.jpg'
     pil_image.save(name,"JPEG")
     plt.close("all")
 
@@ -581,5 +581,4 @@ if __name__=="__main__":
     print("Generating images...\n")
     for i in range(9):
         model.conditional_generation(i)
-    stitch_images()
     print(f'Finished model training in {(time() - start) / 60 :.3f} minutes')
