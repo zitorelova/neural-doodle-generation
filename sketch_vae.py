@@ -529,7 +529,7 @@ def make_image(sequence, iteration, name='generated_'):
     canvas.draw()
     pil_image = PIL.Image.frombytes('RGB', canvas.get_width_height(),
                  canvas.tostring_rgb())
-    name = 'assets/' + name + str(iteration) + '.jpg'
+    name = 'neural-style-transfer/contents' + name + str(iteration) + '.jpg'
     pil_image.save(name,"JPEG")
     plt.close("all")
 
@@ -582,4 +582,4 @@ if __name__=="__main__":
     for i in range(9):
         model.conditional_generation(i)
     stitch_images()
-    print(f'Finished model training in {(time() - start) / 60 :.3f} minutes}')
+    print(f'Finished model training in {(time() - start) / 60 :.3f} minutes')
