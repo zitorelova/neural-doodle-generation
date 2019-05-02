@@ -16,6 +16,9 @@ import net
 from function import adaptive_instance_normalization
 from function import coral
 
+import warnings
+warnings.filterwarnings('ignore')
+
 
 def test_transform(size, crop):
     transform_list = []
