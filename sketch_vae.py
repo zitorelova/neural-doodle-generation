@@ -529,7 +529,7 @@ def make_image(sequence, iteration, name='generated_'):
     canvas.draw()
     pil_image = PIL.Image.frombytes('RGB', canvas.get_width_height(),
                  canvas.tostring_rgb())
-    name = 'neural-style-transfer/contents/' + name + str(iteration) + '.jpg'
+    name = 'style_transfer/contents/' + name + str(iteration) + '.jpg'
     pil_image.save(name,"JPEG")
     plt.close("all")
 
@@ -555,7 +555,7 @@ def stitch_images_old(directory='assets', width=480, length=640):
         lat += width
     return grid
      
-def stitch_images(directory='assets', out_dir='neural-style-transfer/data'):
+def stitch_images(directory='assets', out_dir='style_transfer/data'):
     """
     Stitch generated images together in a grid
 
@@ -573,7 +573,7 @@ def stitch_images(directory='assets', out_dir='neural-style-transfer/data'):
 if __name__=="__main__":
     start = time()
     model = Model()
-    iters = 5000
+    iters = 10000
     print("Starting training run...\n")
     for iteration in range(iters):
         model.train(iteration)
