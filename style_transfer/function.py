@@ -21,6 +21,7 @@ def calc_mean_std(feat, eps=1e-5):
 
 def adaptive_instance_normalization(content_feat, style_feat):
     """
+    AdaIN as presented in Section 5 of Arbitrary Style Transfer in Real-time with Adaptive Instance Normalization by Huang et al.
     
     Arguments:
     content_feat (torch.Tensor): Content feature to normalize
@@ -38,7 +39,13 @@ def adaptive_instance_normalization(content_feat, style_feat):
 
 
 def _calc_feat_flatten_mean_std(feat):
-    # takes 3D feat (C, H, W), return mean and std of array within channels
+    """
+    Return mean and std of feature within channels
+
+    Arguments: 
+    feat (torch.Tensor): Feature to compute mean and std
+
+    """
     assert (feat.size()[0] == 3)
     assert (isinstance(feat, torch.FloatTensor))
     feat_flatten = feat.view(3, -1)
@@ -48,14 +55,25 @@ def _calc_feat_flatten_mean_std(feat):
 
 
 def _mat_sqrt(x):
+    """
+    Compute square root of matrix
+
+    Arguments: 
+    x (torch.Tensor): Matrix to compute square root of
+
+    """
     U, D, V = torch.svd(x)
     return torch.mm(torch.mm(U, D.pow(0.5).diag()), V.t())
 
 
 def coral(source, target):
-    # assume both source and target are 3D array (C, H, W)
-    # Note: flatten -> f
-
+    """
+    Correlation Alignment Loss as shown in Deep CORAL: Correlation Alignment for Deep Domain Adaptation
+    
+    Arguments:
+    source (torch.Tensor): Source feature
+    target (torch.Tensor): Target feature
+    """
     source_f, source_f_mean, source_f_std = _calc_feat_flatten_mean_std(source)
     source_f_norm = (source_f - source_f_mean.expand_as(
         source_f)) / source_f_std.expand_as(source_f)

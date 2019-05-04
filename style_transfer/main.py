@@ -19,8 +19,30 @@ from function import coral
 import warnings
 warnings.filterwarnings('ignore')
 
+def remove_excess_channels(filepath, width=480, height=480):
+    """
+    Convert image from RGB-A to RGB and resize
+    
+    Arguments:
+    filepath (str): Path to image
+    width (int): Width for resizing image
+    height (int): Height for resizing image
+
+    """
+    img = Image.open(filepath)
+    img = img.convert('RGB')
+    img = img.resize((width, height))
+    img.save(filepath)
 
 def test_transform(size, crop):
+    """
+    Compose transforms to run on images
+
+    Arguments:
+    size (int): Resize image
+    crop (boolean): Whether to center crop the image
+
+    """
     transform_list = []
     if size != 0:
         transform_list.append(transforms.Resize(size))
@@ -33,6 +55,18 @@ def test_transform(size, crop):
 
 def style_transfer(vgg, decoder, content, style, alpha=1.0,
                    interpolation_weights=None):
+    """
+    Main style transfer function
+
+    Arguments:
+    vgg (nn.Sequential): VGG for encoding images
+    decoder (nn.Sequential): Decoder portion of the network
+    content (torch.Tensor): Content image
+    style (torch.Tensor): Style image
+    alpha (float): Weighthing parameter
+    interpolation_weights (str): Weights for blending the style of multiple style images
+
+    """
     assert (0.0 <= alpha <= 1.0)
     content_f = vgg(content)
     style_f = vgg(style)
@@ -48,15 +82,6 @@ def style_transfer(vgg, decoder, content, style, alpha=1.0,
     feat = feat * alpha + content_f * (1 - alpha)
     return decoder(feat)
 
-def remove_excess_channels(filepath, reduce_to=3, width=480, height=480):
-    """
-    convert
-
-    """
-    img = Image.open(filepath)
-    img = img.convert('RGB')
-    img = img.resize((width, height))
-    img.save(filepath)
 
 def stitch_images(directory='output', out_dir='../assets'):
     """
@@ -64,6 +89,7 @@ def stitch_images(directory='output', out_dir='../assets'):
 
     Arguments:
     directory (str): Directory where generated images are located
+    out_dir (path): Path to save stitched images
 
     """
     img_paths = [f for f in os.listdir(directory) if 'stylized' in f]
@@ -119,9 +145,9 @@ do_interpolation = False
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Either --content or --contentDir should be given.
+# Either --content or --content_dir should be given.
 assert (args.content or args.content_dir)
-# Either --style or --styleDir should be given.
+# Either --style or --style_dir should be given.
 assert (args.style or args.style_dir)
 
 if args.content:
@@ -197,4 +223,4 @@ for content_path in content_paths:
             )
             save_image(output, output_name)
 
-stitch_images()
+stitch_images() # stitch generated images

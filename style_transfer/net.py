@@ -3,6 +3,7 @@ import torch.nn as nn
 from function import adaptive_instance_normalization as adain
 from function import calc_mean_std
 
+# Decoder network
 decoder = nn.Sequential(
     nn.ReflectionPad2d((1, 1, 1, 1)),
     nn.Conv2d(512, 256, (3, 3)),
@@ -35,6 +36,7 @@ decoder = nn.Sequential(
     nn.Conv2d(64, 3, (3, 3)),
 )
 
+# VGG encoder network
 vgg = nn.Sequential(
     nn.Conv2d(3, 3, (1, 1)),
     nn.ReflectionPad2d((1, 1, 1, 1)),
@@ -93,41 +95,72 @@ vgg = nn.Sequential(
 
 
 class Net(nn.Module):
+    """
+    Arbitrary Style Transfer model
+
+    """
     def __init__(self, encoder, decoder):
         super(Net, self).__init__()
         enc_layers = list(encoder.children())
-        self.enc_1 = nn.Sequential(*enc_layers[:4])  # input -> relu1_1
-        self.enc_2 = nn.Sequential(*enc_layers[4:11])  # relu1_1 -> relu2_1
-        self.enc_3 = nn.Sequential(*enc_layers[11:18])  # relu2_1 -> relu3_1
-        self.enc_4 = nn.Sequential(*enc_layers[18:31])  # relu3_1 -> relu4_1
+        self.enc_1 = nn.Sequential(*enc_layers[:4])          
+        self.enc_2 = nn.Sequential(*enc_layers[4:11])
+        self.enc_3 = nn.Sequential(*enc_layers[11:18])  
+        self.enc_4 = nn.Sequential(*enc_layers[18:31])  
         self.decoder = decoder
         self.mse_loss = nn.MSELoss()
 
-        # fix the encoder
         for name in ['enc_1', 'enc_2', 'enc_3', 'enc_4']:
             for param in getattr(self, name).parameters():
                 param.requires_grad = False
 
-    # extract relu1_1, relu2_1, relu3_1, relu4_1 from input image
     def encode_with_intermediate(self, input):
+        """
+        Extract relu1_1, relu2_1, relu3_1, relu4_1 from input image
+
+        Arguments:
+        input (torch.Tensor): Input image to extract features from
+
+        """
         results = [input]
         for i in range(4):
             func = getattr(self, 'enc_{:d}'.format(i + 1))
             results.append(func(results[-1]))
         return results[1:]
 
-    # extract relu4_1 from input image
     def encode(self, input):
+        """
+        Extract relu4_1 from input image
+
+        Arguments: 
+        input (torch.Tensor): Input image to extract features from
+
+        """
         for i in range(4):
             input = getattr(self, 'enc_{:d}'.format(i + 1))(input)
         return input
 
     def calc_content_loss(self, input, target):
+        """
+        Calculate content loss
+
+        Arguments:
+        input (torch.Tensor): Input image
+        target (torh.Tensor): Target image
+
+        """
         assert (input.size() == target.size())
         assert (target.requires_grad is False)
         return self.mse_loss(input, target)
 
     def calc_style_loss(self, input, target):
+        """
+        Calculate style loss
+
+        Arguments:
+        input (torch.Tensor): Input image
+        target (torh.Tensor): Target image
+
+        """
         assert (input.size() == target.size())
         assert (target.requires_grad is False)
         input_mean, input_std = calc_mean_std(input)
@@ -136,6 +169,15 @@ class Net(nn.Module):
                self.mse_loss(input_std, target_std)
 
     def forward(self, content, style, alpha=1.0):
+        """
+        Forward pass through model
+        
+        Arguments:
+        content (torch.Tensor): Content image
+        style (torch.Tensor): Style image
+        alpha (float): Weighting parameter
+
+        """
         assert 0 <= alpha <= 1
         style_feats = self.encode_with_intermediate(style)
         content_feat = self.encode(content)
