@@ -58,6 +58,3 @@ An example of the final render is shown below.
 - [A Neural Algorithm of Artistic Style](https://arxiv.org/pdf/1508.06576.pdf)
 - [Arbitrary Style Transfer in Real-time with Adaptive Instance Normalization](https://arxiv.org/pdf/1703.06868.pdf)
 - [Deep CORAL: Correlation Alignment for Deep Domain Adaptation](https://arxiv.org/pdf/1607.01719.pdf)
-
-### Acknowledgements
-- Style image from the model is [Awakening](https://www.pinterest.ca/pin/410883165974568642/) by Simon Bull.
